@@ -54,7 +54,7 @@ const argv = yargs(hideBin(process.argv))
 	})
 	.option("integrateBranch", {
 		type: "string",
-		default: process.env.INTEGRATE_BRANCH ?? ".tiramiss",
+		default: process.env.INTEGRATE_BRANCH ?? "tiramiss",
 		describe: "Final integration branch name to produce",
 	})
 	.option("toolRepo", {
@@ -71,7 +71,7 @@ const argv = yargs(hideBin(process.argv))
 	})
 	.option("toolDir", {
 		type: "string",
-		default: process.env.TOOL_DIR ?? ".tiramiss",
+		default: process.env.TOOL_DIR ?? "./",
 		describe: "Target directory for vendored tool repo",
 	})
 	.option("push", {
@@ -352,9 +352,11 @@ async function vendorToolRepo() {
 
 	// 6) tiramiss を push
 	if (PUSH) {
-		if (!(await remoteBranchExists(`origin/${INTEGRATE_BRANCH}`)))
+		if (!(await remoteBranchExists(`origin/${INTEGRATE_BRANCH}`))) {
 			await git(["push", "-u", "origin", INTEGRATE_BRANCH]);
-		else await git(["push", "origin", INTEGRATE_BRANCH]);
+		} else {
+			await git(["push", "origin", INTEGRATE_BRANCH]);
+		}
 	}
 
 	console.log("✔ pipeline done");
