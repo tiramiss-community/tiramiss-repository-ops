@@ -1,69 +1,24 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { EOL } from "node:os";
-import yargs from "yargs";
-import { hideBin } from "yargs/helpers";
 
 type Mode = "merge" | "pick" | "squash";
 
-// ================== コマンドライン引数の解析 ==================
-
-const argv = yargs(hideBin(process.argv))
-	.option("base-ref", {
-		alias: "b",
-		type: "string",
-		description: "触らないベース",
-		default: process.env.BASE_REF ?? "origin/develop",
-	})
-	.option("integrate-branch", {
-		alias: "i",
-		type: "string",
-		description:
-			"組み立て先. 都度force-pushされるので、このブランチに対して直接作業しない事",
-		default: process.env.INTEGRATE_BRANCH ?? "tiramiss",
-	})
-	.option("topics-file", {
-		alias: "t",
-		type: "string",
-		description: "適用順リスト",
-		default: process.env.TOPICS_FILE ?? "topics.txt",
-	})
-	.option("mode", {
-		alias: "m",
-		type: "string",
-		choices: ["merge", "pick", "squash"] as const,
-		description: "統合モード",
-		default: (process.env.MODE as Mode) ?? "merge",
-	})
-	.option("squash-prefix", {
-		type: "string",
-		description: "squash モードでのコミットメッセージプレフィックス",
-		default: process.env.SQUASH_PREFIX ?? "squash",
-	})
-	.option("squash-list-commits", {
-		type: "boolean",
-		description: "squash モードでコミット一覧をメッセージに含めるか",
-		default:
-			process.env.SQUASH_LIST_COMMITS !== undefined
-				? process.env.SQUASH_LIST_COMMITS.toLowerCase() === "true"
-				: true,
-	})
-	.help()
-	.alias("help", "h")
-	.parseSync();
+// ================== 設定（環境変数で上書き可能） ==================
 
 /** 触らないベース */
-const BASE_REF = argv["base-ref"];
+const BASE_REF = process.env.BASE_REF ?? "origin/develop";
 /** 組み立て先. 都度force-pushされるので、このブランチに対して直接作業しない事 */
-const INTEGRATE_BRANCH = argv["integrate-branch"];
+const INTEGRATE_BRANCH = process.env.INTEGRATE_BRANCH ?? "tiramiss";
 /** 適用順リスト */
-const TOPICS_FILE = argv["topics-file"];
+const TOPICS_FILE = process.env.TOPICS_FILE ?? "topics.txt";
 /** merge | pick | squash */
-const MODE = argv.mode as Mode;
+const MODE = (process.env.MODE as Mode) ?? "merge";
 
 // squash 用メッセージ設定
-const SQUASH_PREFIX = argv["squash-prefix"];
-const SQUASH_LIST_COMMITS = argv["squash-list-commits"];
+const SQUASH_PREFIX = process.env.SQUASH_PREFIX ?? "squash";
+const SQUASH_LIST_COMMITS =
+	(process.env.SQUASH_LIST_COMMITS ?? "true").toLowerCase() === "true";
 
 // ================== 子プロセスユーティリティ群 ==================
 
@@ -121,6 +76,10 @@ async function revParseCommit(ref: string) {
 
 async function showRefLocalBranch(branch: string) {
 	return await gitOk(["show-ref", "--verify", `refs/heads/${branch}`]);
+}
+
+async function showRefRemoteBranch(remoteBranch: string) {
+	return await gitOk(["show-ref", "--verify", `refs/remotes/${remoteBranch}`]);
 }
 
 async function resolveTopicRef(topic: string): Promise<string> {
