@@ -71,7 +71,7 @@ const argv = yargs(hideBin(process.argv))
 	})
 	.option("toolDir", {
 		type: "string",
-		default: process.env.TOOL_DIR ?? ".",
+		default: process.env.TOOL_DIR ?? ".tiramiss",
 		describe: "Target directory for vendored tool repo",
 	})
 	.option("push", {
@@ -246,8 +246,8 @@ async function vendorToolRepo() {
 	const target = TOOL_DIR;
 	// 既存の target を一旦消す（ワークツリー汚染を避ける）
 	if (existsSync(target)) {
-		console.log(`  • remove existing ${target}`);
-		rmSync(target, { recursive: true, force: true });
+		console.log(`  • remove existing ${target}/*`);
+		rmSync(`${target}/*`, { recursive: true, force: true });
 		await git(["add", "-A", target]); // 削除をステージ
 	}
 
