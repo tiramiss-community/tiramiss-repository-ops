@@ -71,7 +71,7 @@ const argv = yargs(hideBin(process.argv))
 	})
 	.option("toolDir", {
 		type: "string",
-		default: process.env.TOOL_DIR ?? "tiramiss",
+		default: process.env.TOOL_DIR ?? ".tiramiss",
 		describe: "Target directory for vendored tool repo",
 	})
 	.option("push", {
@@ -104,10 +104,15 @@ const TOPICS_CANDIDATES = argv.topics
 	? [argv.topics]
 	: [join(TOOL_DIR, "topics.txt"), "topics.txt"];
 
-function run(cmd: string, args: string[], quiet = false) {
+function run(
+	cmd: string,
+	args: string[],
+	cwd: string | null = null,
+	quiet = false,
+) {
 	return new Promise<{ code: number; out: string; err: string }>(
 		(resolve, reject) => {
-			const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"] });
+			const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], cwd });
 			let out = "",
 				err = "";
 			p.stdout.on("data", (d) => {
@@ -126,12 +131,12 @@ function run(cmd: string, args: string[], quiet = false) {
 	);
 }
 async function git(args: string[], quiet = false) {
-	const r = await run("git", args, quiet);
+	const r = await run("git", args, null, quiet);
 	if (r.code !== 0) throw new Error(`git ${args.join(" ")} failed:\n${r.err}`);
 	return r.out.trim();
 }
 async function gitOk(args: string[]) {
-	return (await run("git", args, true)).code === 0;
+	return (await run("git", args, null, true)).code === 0;
 }
 async function ensureClean() {
 	const s = await git(["status", "--porcelain"], true);
@@ -211,6 +216,7 @@ async function applySquash(topic: string) {
 	const diff = await run(
 		"git",
 		["diff", "--quiet", `${common}..${topic}`, "--"],
+		null,
 		true,
 	);
 	if (diff.code === 0) {
@@ -247,12 +253,18 @@ async function vendorToolRepo() {
 
 	console.log(`  • clone ${TOOL_REPO}@${TOOL_REF} -> ./${target}`);
 	// git clone --depth=1 --branch <TOOL_REF> が理想だが、コミット/タグ/ブランチに柔軟対応するためにクローン後 checkout
-	const r1 = await run("git", ["clone", "--depth=1", TOOL_REPO, target], true);
+	const r1 = await run(
+		"git",
+		["clone", "--depth=1", TOOL_REPO, target],
+		null,
+		true,
+	);
 	if (r1.code !== 0) throw new Error(`clone failed: ${r1.err}`);
 	// checkout ref
 	const r2 = await run(
 		"git",
 		["-C", target, "fetch", "--depth=1", "origin", TOOL_REF],
+		null,
 		true,
 	);
 	if (r2.code === 0) {
@@ -263,6 +275,8 @@ async function vendorToolRepo() {
 	// ネストした .git を除去（ベンダリング）
 	console.log("  • remove nested .git (vendoring)");
 	rmSync(join(target, ".git"), { recursive: true, force: true });
+
+	await run("pnpm", ["install", "--frozen-lockfile"], target);
 
 	// 追加をステージ & コミット
 	await git(["add", "-A", target]);
