@@ -59,7 +59,9 @@ const argv = yargs(hideBin(process.argv))
 	})
 	.option("toolRepo", {
 		type: "string",
-		default: process.env.TOOL_REPO ?? "",
+		default:
+			process.env.TOOL_REPO ??
+			"https://github.com/tiramiss-community/tiramiss-repository-ops.git",
 		describe: "External repository URL to vendor (optional)",
 	})
 	.option("toolRef", {

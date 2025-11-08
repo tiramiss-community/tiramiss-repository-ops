@@ -4,7 +4,7 @@
 	"description": "",
 	"private": true,
 	"scripts": {
-		"run:merge": "vite-node ./src/make-tiramiss.ts ",
+		"make": "vite-node ./src/make-tiramiss.ts",
 		"format:fix": "pnpm exec -- biome format --fix"
 	},
 	"dependencies": {
