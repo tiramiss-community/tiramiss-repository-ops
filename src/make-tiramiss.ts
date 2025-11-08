@@ -6,15 +6,15 @@
  * topic branches via one of three strategies: merge, pick (cherry-pick), or squash.
  *
  * Options (env vars provide defaults):
- *   --base-ref        (BASE_REF)       Base ref to reset working branch (default: origin/develop-upstream)
- *   --working-branch  (WORKING_BRANCH) Working prep branch name (default: develop-working)
- *   --integ-branch    (INTEG_BRANCH)   Final integration branch name (default: tiramiss)
- *   --tool-repo       (TOOL_REPO)      External repo URL to vendor (optional)
- *   --tool-ref        (TOOL_REF)       Ref in external repo (branch|tag|commit) (default: HEAD)
- *   --tool-dir        (TOOL_DIR)       Target directory for vendored repo (default: tiramiss)
- *   --push            (PUSH)           Whether to push branches (default: true)
- *   --mode            (MODE)           merge | pick | squash (default: squash)
- *   --topics          (TOPICS_FILE)    Explicit topics file path (overrides auto search)
+ *   --base-ref        (BASE_REF)               Base ref to reset working branch (default: origin/develop-upstream)
+ *   --working-branch  (WORKING_BRANCH)         Working prep branch name (default: develop-working)
+ *   --integrate-branch    (INTEGRATE_BRANCH)   Final integration branch name (default: tiramiss)
+ *   --tool-repo       (TOOL_REPO)              External repo URL to vendor (optional)
+ *   --tool-ref        (TOOL_REF)               Ref in external repo (branch|tag|commit) (default: HEAD)
+ *   --tool-dir        (TOOL_DIR)               Target directory for vendored repo (default: tiramiss)
+ *   --push            (PUSH)                   Whether to push branches (default: true)
+ *   --mode            (MODE)                   merge | pick | squash (default: squash)
+ *   --topics          (TOPICS_FILE)            Explicit topics file path (overrides auto search)
  *
  * Auto topic file search order (if --topics not given): ./<toolDir>/topics.txt, ./topics.txt
  */
@@ -30,7 +30,7 @@ type Mode = "merge" | "pick" | "squash";
 interface CliArgs {
 	baseRef: string;
 	workingBranch: string;
-	integBranch: string;
+	integrateBranch: string;
 	toolRepo: string;
 	toolRef: string;
 	toolDir: string;
@@ -52,9 +52,9 @@ const argv = yargs(hideBin(process.argv))
 		default: process.env.WORKING_BRANCH ?? "develop-working",
 		describe: "Ephemeral integration prep branch name",
 	})
-	.option("integBranch", {
+	.option("integrateBranch", {
 		type: "string",
-		default: process.env.INTEG_BRANCH ?? "tiramiss",
+		default: process.env.INTEGRATE_BRANCH ?? "tiramiss",
 		describe: "Final integration branch name to produce",
 	})
 	.option("toolRepo", {
@@ -92,7 +92,7 @@ const argv = yargs(hideBin(process.argv))
 
 const BASE_REF = argv.baseRef;
 const WORKING_BRANCH = argv.workingBranch;
-const INTEG_BRANCH = argv.integBranch;
+const INTEGRATE_BRANCH = argv.integrateBranch;
 const TOOL_REPO = argv.toolRepo;
 const TOOL_REF = argv.toolRef;
 const TOOL_DIR = argv.toolDir;
@@ -308,11 +308,11 @@ async function vendorToolRepo() {
 
 	// 4) tiramiss を作成/更新（develop-working の先頭から）
 	const workingHead = await rev("HEAD");
-	if (await localBranchExists(INTEG_BRANCH)) {
-		await git(["switch", INTEG_BRANCH]);
+	if (await localBranchExists(INTEGRATE_BRANCH)) {
+		await git(["switch", INTEGRATE_BRANCH]);
 		await git(["reset", "--hard", workingHead]);
 	} else {
-		await git(["switch", "-C", INTEG_BRANCH, workingHead]);
+		await git(["switch", "-C", INTEGRATE_BRANCH, workingHead]);
 	}
 
 	// 5) topics を適用
@@ -336,9 +336,9 @@ async function vendorToolRepo() {
 
 	// 6) tiramiss を push
 	if (PUSH) {
-		if (!(await remoteBranchExists(`origin/${INTEG_BRANCH}`)))
-			await git(["push", "-u", "origin", INTEG_BRANCH]);
-		else await git(["push", "origin", INTEG_BRANCH]);
+		if (!(await remoteBranchExists(`origin/${INTEGRATE_BRANCH}`)))
+			await git(["push", "-u", "origin", INTEGRATE_BRANCH]);
+		else await git(["push", "origin", INTEGRATE_BRANCH]);
 	}
 
 	console.log("✔ pipeline done");
