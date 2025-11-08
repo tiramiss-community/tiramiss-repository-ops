@@ -1,22 +1,106 @@
 /* eslint-disable no-console */
+/**
+ * make-tiramiss.ts
+ *
+ * CLI for constructing integration branches by vendoring a tool repo and applying
+ * topic branches via one of three strategies: merge, pick (cherry-pick), or squash.
+ *
+ * Options (env vars provide defaults):
+ *   --base-ref        (BASE_REF)       Base ref to reset working branch (default: origin/develop-upstream)
+ *   --working-branch  (WORKING_BRANCH) Working prep branch name (default: develop-working)
+ *   --integ-branch    (INTEG_BRANCH)   Final integration branch name (default: tiramiss)
+ *   --tool-repo       (TOOL_REPO)      External repo URL to vendor (optional)
+ *   --tool-ref        (TOOL_REF)       Ref in external repo (branch|tag|commit) (default: HEAD)
+ *   --tool-dir        (TOOL_DIR)       Target directory for vendored repo (default: tiramiss)
+ *   --push            (PUSH)           Whether to push branches (default: true)
+ *   --mode            (MODE)           merge | pick | squash (default: squash)
+ *   --topics          (TOPICS_FILE)    Explicit topics file path (overrides auto search)
+ *
+ * Auto topic file search order (if --topics not given): ./<toolDir>/topics.txt, ./topics.txt
+ */
 
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import yargs from "yargs";
+import { hideBin } from "yargs/helpers";
 
 type Mode = "merge" | "pick" | "squash";
 
-const BASE_REF = process.env.BASE_REF ?? "origin/develop-upstream";
-const WORKING_BRANCH = process.env.WORKING_BRANCH ?? "develop-working";
-const INTEG_BRANCH = process.env.INTEG_BRANCH ?? "tiramiss";
+interface CliArgs {
+	baseRef: string;
+	workingBranch: string;
+	integBranch: string;
+	toolRepo: string;
+	toolRef: string;
+	toolDir: string;
+	push: boolean;
+	mode: Mode;
+	topics: string | undefined; // explicit topics file path
+}
 
-const TOOL_REPO = process.env.TOOL_REPO ?? ""; // 例: https://github.com/you/tiramiss-build-scripts.git
-const TOOL_REF = process.env.TOOL_REF ?? "HEAD"; // 例: main / v1.2.3 / <commit>
-const TOOL_DIR = process.env.TOOL_DIR ?? "tiramiss"; // 展開先サブディレクトリ
-const PUSH = (process.env.PUSH ?? "true").toLowerCase() === "true";
+// CLI parsing (env vars remain usable as defaults)
+const argv = yargs(hideBin(process.argv))
+	.usage("$0 [options]")
+	.option("baseRef", {
+		type: "string",
+		default: process.env.BASE_REF ?? "origin/develop-upstream",
+		describe: "Base reference used to reset working branch",
+	})
+	.option("workingBranch", {
+		type: "string",
+		default: process.env.WORKING_BRANCH ?? "develop-working",
+		describe: "Ephemeral integration prep branch name",
+	})
+	.option("integBranch", {
+		type: "string",
+		default: process.env.INTEG_BRANCH ?? "tiramiss",
+		describe: "Final integration branch name to produce",
+	})
+	.option("toolRepo", {
+		type: "string",
+		default: process.env.TOOL_REPO ?? "",
+		describe: "External repository URL to vendor (optional)",
+	})
+	.option("toolRef", {
+		type: "string",
+		default: process.env.TOOL_REF ?? "HEAD",
+		describe: "Ref in tool-repo to checkout (branch|tag|commit)",
+	})
+	.option("toolDir", {
+		type: "string",
+		default: process.env.TOOL_DIR ?? "tiramiss",
+		describe: "Target directory for vendored tool repo",
+	})
+	.option("push", {
+		type: "boolean",
+		default: (process.env.PUSH ?? "true").toLowerCase() === "true",
+		describe: "Whether to push branches to origin",
+	})
+	.option("mode", {
+		choices: ["merge", "pick", "squash"],
+		default: (process.env.MODE as Mode) ?? "squash",
+		describe: "Apply topics using chosen strategy",
+	})
+	.option("topics", {
+		type: "string",
+		default: process.env.TOPICS_FILE,
+		describe: "Explicit topics file path (overrides auto search)",
+	})
+	.help()
+	.parseSync() as unknown as CliArgs;
 
-const MODE = (process.env.MODE as Mode) ?? "squash"; // merge | pick | squash
-const TOPICS_CANDIDATES = [join(TOOL_DIR, "topics.txt"), "topics.txt"];
+const BASE_REF = argv.baseRef;
+const WORKING_BRANCH = argv.workingBranch;
+const INTEG_BRANCH = argv.integBranch;
+const TOOL_REPO = argv.toolRepo;
+const TOOL_REF = argv.toolRef;
+const TOOL_DIR = argv.toolDir;
+const PUSH = argv.push;
+const MODE = argv.mode;
+const TOPICS_CANDIDATES = argv.topics
+	? [argv.topics]
+	: [join(TOOL_DIR, "topics.txt"), "topics.txt"];
 
 function run(cmd: string, args: string[], quiet = false) {
 	return new Promise<{ code: number; out: string; err: string }>(
