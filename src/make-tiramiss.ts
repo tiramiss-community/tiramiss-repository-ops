@@ -288,7 +288,7 @@ async function vendorToolRepo() {
 		}
 
 		for (const src of glob.sync(`${working}/**/*`)) {
-			const dest = join(target, src);
+			const dest = join(target, src.replace(working, ""));
 			console.log("	• copy", src, "->", dest);
 			cpSync(src, dest, { recursive: true });
 		}
