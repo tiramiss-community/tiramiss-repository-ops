@@ -5,6 +5,7 @@
   "private": true,
   "scripts": {
     "rebase-working": "vite-node ./src/rebase-working-branch.ts",
+    "issue-to-topics": "vite-node ./src/issue-to-topics.ts",
     "apply-topics": "vite-node ./src/apply-topics.ts",
     "format:fix": "pnpm exec -- biome format --fix"
   },
