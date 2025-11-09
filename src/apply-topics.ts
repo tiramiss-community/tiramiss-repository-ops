@@ -19,11 +19,8 @@
  * Auto topic file search order (if --topics not given): ./<toolDir>/topics.txt, ./topics.txt
  */
 
-import { spawn } from "node:child_process";
-import * as fs from "node:fs";
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
-import { glob } from "glob";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import {
@@ -106,10 +103,7 @@ const argv = yargs(hideBin(process.argv))
 	.parseSync() as unknown as CliArgs;
 
 const BASE_REF = argv.baseRef;
-const WORKING_BRANCH = argv.workingBranch;
 const INTEGRATE_BRANCH = argv.integrateBranch;
-const TOOL_REPO = argv.toolRepo;
-const TOOL_REF = argv.toolRef;
 const TOOL_DIR = argv.toolDir;
 const PUSH = argv.push;
 const MODE = argv.mode;
@@ -194,109 +188,41 @@ async function applySquash(topic: string) {
 	]);
 }
 
-async function vendorToolRepo() {
-	if (!TOOL_REPO) {
-		console.log(`ℹ TOOL_REPO が未指定なのでスキップ（${TOOL_DIR} は触らない）`);
-		return false;
-	}
-
-	const working = fs.mkdtempSync("/tmp/tiramiss-");
-
-	try {
-		console.log(`  • clone ${TOOL_REPO}@${TOOL_REF} -> ${working}`);
-		// git clone --depth=1 --branch <TOOL_REF> が理想だが、コミット/タグ/ブランチに柔軟対応するためにクローン後 checkout
-		const r1 = await run(
-			"git",
-			["clone", "--depth=1", TOOL_REPO, working],
-			null,
-			true,
-		);
-		if (r1.code !== 0) throw new Error(`clone failed: ${r1.err}`);
-
-		// checkout ref
-		const r2 = await run(
-			"git",
-			["-C", working, "fetch", "--depth=1", "origin", TOOL_REF],
-			null,
-			true,
-		);
-
-		if (r2.code === 0) {
-			await git(["-C", working, "checkout", "FETCH_HEAD"], true);
-		} else {
-			// ブランチ名で shallow clone できている可能性あり。失敗しても致命ではないので続行。
-		}
-
-		// ネストした .git を除去（ベンダリング）
-		console.log("  • remove nested .git (vendoring)");
-		rmSync(join(working, ".git"), { recursive: true, force: true });
-
-		// -----------------------------------------------------------------------
-
-		// 既存の target を一旦消す（ワークツリー汚染を避ける）
-		const target = TOOL_DIR;
-		if (existsSync(target)) {
-			console.log(`  • remove existing ${join(target, "*")}`);
-			rmSync(join(target, "*"), { recursive: true, force: true });
-			await git(["add", "-A", target]);
-		}
-
-		for (const src of glob.sync(`${working}/**/*`)) {
-			const dest = join(target, src.replace(working, ""));
-			console.log("	• copy", src, "->", dest);
-			cpSync(src, dest, { recursive: true });
-		}
-
-		console.log("	• install dependencies with pnpm");
-		await run("pnpm", ["install", "--frozen-lockfile"], target);
-
-		// 追加をステージ & コミット
-		await git(["add", "-A", target]);
-		if (!(await gitOk(["diff", "--cached", "--quiet"]))) {
-			await git([
-				"commit",
-				"-m",
-				`ops: vendor ${target} from ${TOOL_REPO}@${TOOL_REF}`,
-			]);
-			return true;
-		}
-
-		console.log("  • no changes to commit for vendored tool repo");
-		return false;
-	} finally {
-		rmSync(working, { recursive: true, force: true });
-	}
-}
-
 (async () => {
 	await ensureClean();
 
-	console.log("▶ fetch --all --prune");
-	await git(["fetch", "--all", "--prune"]);
-
-	// WORKING_BRANCH を作成 / リセット
-	const base = await rev(BASE_REF);
-	console.log(`BASE: ${BASE_REF} @ ${base}`);
-	if (await localBranchExists(WORKING_BRANCH)) {
-		await git(["switch", WORKING_BRANCH]);
-		await git(["reset", "--hard", base]);
-	} else {
-		await git(["switch", "-C", WORKING_BRANCH, base]);
+	const { path: topicsPath, items: topics } = readTopics();
+	if (!topicsPath) {
+		console.log("ℹ topics.txt が見つかりません。");
+		return;
 	}
 
-	// TOOL_DIR に別リポの内容をクローン（ベンダリング）
-	console.log(`▶ vendor tool repo into ./${TOOL_DIR}`);
-	const changed = await vendorToolRepo();
+	// tiramiss を作成/更新（INTEGRATE_BRANCH の先頭から）
+	const workingHead = await rev("HEAD");
+	if (await localBranchExists(INTEGRATE_BRANCH)) {
+		await git(["switch", INTEGRATE_BRANCH]);
+		await git(["reset", "--hard", workingHead]);
+	} else {
+		await git(["switch", "-C", INTEGRATE_BRANCH, workingHead]);
+	}
 
-	// WORKING_BRANCH を push（変更があれば）
-	if (PUSH && changed) {
-		if (!(await remoteBranchExists(`origin/${WORKING_BRANCH}`))) {
-			console.log("▶ push develop-working");
-			await git(["push", "-u", "origin", WORKING_BRANCH]);
-		} else if (changed) {
-			// 作業ブランチが再構築されているはずなので強制プッシュが必要
-			console.log("▶ force push develop-working");
-			await git(["push", "--force", "origin", WORKING_BRANCH]);
+	// topics を適用
+	console.log(
+		`▶ apply topics (${MODE}) from ${topicsPath}: ${topics.length} entries`,
+	);
+	for (const raw of topics) {
+		const topic = await resolveTopicRef(raw);
+		console.log(`  • ${topic}`);
+		if (MODE === "merge") await applyMerge(topic);
+		else if (MODE === "pick") await applyPick(topic, BASE_REF);
+		else await applySquash(topic);
+	}
+
+	if (PUSH) {
+		if (!(await remoteBranchExists(`origin/${INTEGRATE_BRANCH}`))) {
+			await git(["push", "-u", "origin", INTEGRATE_BRANCH]);
+		} else {
+			await git(["push", "origin", INTEGRATE_BRANCH]);
 		}
 	}
 
