@@ -72,7 +72,7 @@ const argv = yargs(hideBin(process.argv))
 	})
 	.option("toolDir", {
 		type: "string",
-		default: process.env.TOOL_DIR ?? ".tiramiss",
+		default: process.env.TOOL_DIR ?? "./",
 		describe: "Target directory for vendored tool repo",
 	})
 	.option("push", {
