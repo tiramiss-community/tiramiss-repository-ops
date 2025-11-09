@@ -1,27 +1,5 @@
-/* eslint-disable no-console */
-/**
- * make-tiramiss.ts
- *
- * CLI for constructing integration branches by vendoring a tool repo and applying
- * topic branches via one of three strategies: merge, pick (cherry-pick), or squash.
- *
- * Options (env vars provide defaults):
- *   --base-ref        (BASE_REF)               Base ref to reset working branch (default: origin/develop-upstream)
- *   --working-branch  (WORKING_BRANCH)         Working prep branch name (default: develop-working)
- *   --integrate-branch    (INTEGRATE_BRANCH)   Final integration branch name (default: tiramiss)
- *   --tool-repo       (TOOL_REPO)              External repo URL to vendor (optional)
- *   --tool-ref        (TOOL_REF)               Ref in external repo (branch|tag|commit) (default: HEAD)
- *   --tool-dir        (TOOL_DIR)               Target directory for vendored repo (default: tiramiss)
- *   --push            (PUSH)                   Whether to push branches (default: true)
- *   --mode            (MODE)                   merge | pick | squash (default: squash)
- *   --topics          (TOPICS_FILE)            Explicit topics file path (overrides auto search)
- *
- * Auto topic file search order (if --topics not given): ./<toolDir>/topics.txt, ./topics.txt
- */
-
-import { spawn } from "node:child_process";
 import * as fs from "node:fs";
-import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, rmSync } from "node:fs";
 import { join } from "node:path";
 import { glob } from "glob";
 import yargs from "yargs";
@@ -30,29 +8,12 @@ import {
 	ensureClean,
 	git,
 	gitOk,
-	listCommits,
 	localBranchExists,
-	mergeBase,
 	remoteBranchExists,
 	rev,
 } from "./utils/git";
 import { run } from "./utils/proc";
 
-type Mode = "merge" | "pick" | "squash";
-
-interface CliArgs {
-	baseRef: string;
-	workingBranch: string;
-	integrateBranch: string;
-	toolRepo: string;
-	toolRef: string;
-	toolDir: string;
-	push: boolean;
-	mode: Mode;
-	topics: string | undefined; // explicit topics file path
-}
-
-// CLI parsing (env vars remain usable as defaults)
 const argv = yargs(hideBin(process.argv))
 	.usage("$0 [options]")
 	.option("baseRef", {
@@ -64,11 +25,6 @@ const argv = yargs(hideBin(process.argv))
 		type: "string",
 		default: process.env.WORKING_BRANCH ?? "develop-working",
 		describe: "Ephemeral integration prep branch name",
-	})
-	.option("integrateBranch", {
-		type: "string",
-		default: process.env.INTEGRATE_BRANCH ?? "tiramiss",
-		describe: "Final integration branch name to produce",
 	})
 	.option("toolRepo", {
 		type: "string",
@@ -92,107 +48,15 @@ const argv = yargs(hideBin(process.argv))
 		default: (process.env.PUSH ?? "true").toLowerCase() === "true",
 		describe: "Whether to push branches to origin",
 	})
-	.option("mode", {
-		choices: ["merge", "pick", "squash"],
-		default: (process.env.MODE as Mode) ?? "squash",
-		describe: "Apply topics using chosen strategy",
-	})
-	.option("topics", {
-		type: "string",
-		default: process.env.TOPICS_FILE,
-		describe: "Explicit topics file path (overrides auto search)",
-	})
 	.help()
-	.parseSync() as unknown as CliArgs;
+	.parseSync(); // as unknown as CliArgs;
 
 const BASE_REF = argv.baseRef;
 const WORKING_BRANCH = argv.workingBranch;
-const INTEGRATE_BRANCH = argv.integrateBranch;
 const TOOL_REPO = argv.toolRepo;
 const TOOL_REF = argv.toolRef;
 const TOOL_DIR = argv.toolDir;
 const PUSH = argv.push;
-const MODE = argv.mode;
-const TOPICS_CANDIDATES = argv.topics
-	? [argv.topics]
-	: [join(TOOL_DIR, "topics.txt"), "topics.txt"];
-
-function readTopics(): { path: string | null; items: string[] } {
-	for (const p of TOPICS_CANDIDATES) {
-		if (existsSync(p)) {
-			const items = readFileSync(p, "utf8")
-				.split(/\r?\n/)
-				.map((l) => l.trim())
-				.filter((l) => l && !l.startsWith("#"));
-			return { path: p, items };
-		}
-	}
-	return { path: null, items: [] };
-}
-
-async function resolveTopicRef(topic: string) {
-	if (await gitOk(["rev-parse", "--verify", `${topic}^{commit}`])) return topic;
-	for (const cand of [`origin/${topic}`, `upstream/${topic}`]) {
-		if (await gitOk(["rev-parse", "--verify", `${cand}^{commit}`])) return cand;
-	}
-	throw new Error(`見つからないブランチ: ${topic}`);
-}
-
-async function applyMerge(topic: string) {
-	if (await gitOk(["merge-base", "--is-ancestor", topic, "HEAD"])) {
-		console.log(`  • skip (already merged): ${topic}`);
-		return;
-	}
-	await git(["merge", "--no-ff", topic]);
-}
-
-async function applyPick(topic: string, baseRef: string) {
-	if (await gitOk(["merge-base", "--is-ancestor", topic, "HEAD"])) {
-		console.log(`  • skip (already picked): ${topic}`);
-		return;
-	}
-	const base = await mergeBase(topic, baseRef);
-	if (!base) throw new Error(`merge-base 取得失敗: ${topic} vs ${baseRef}`);
-	const commits = await listCommits(base, topic);
-	if (!commits.length) {
-		console.log("   (no commits to pick)");
-		return;
-	}
-	for (const c of commits) {
-		await git(["cherry-pick", "-x", c]).catch(() => {
-			throw new Error(
-				"cherry-pick コンフリクト。解決後 'git add -A && git cherry-pick --continue' を実行し、再実行してください。",
-			);
-		});
-	}
-}
-
-async function applySquash(topic: string) {
-	const common = await mergeBase("HEAD", topic);
-	const diff = await run(
-		"git",
-		["diff", "--quiet", `${common}..${topic}`, "--"],
-		null,
-		true,
-	);
-	if (diff.code === 0) {
-		console.log(`  • skip (no diff): ${topic}`);
-		return;
-	}
-	const m = await run("git", ["merge", "--squash", "--no-commit", topic]);
-	if (m.code !== 0)
-		throw new Error(
-			"squash コンフリクト。解決後 'git commit' して再実行してください。",
-		);
-	const headSubj = await git(["log", "-1", "--pretty=%s", topic], true);
-	await git([
-		"commit",
-		"-m",
-		`squash(${topic.split("/").pop() ?? topic}): ${headSubj}`,
-		"-m",
-		`Squashed from '${topic}'`,
-	]);
-}
 
 async function vendorToolRepo() {
 	if (!TOOL_REPO) {

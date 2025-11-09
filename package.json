@@ -4,7 +4,8 @@
 	"description": "",
 	"private": true,
 	"scripts": {
-		"make": "vite-node ./src/make-tiramiss.ts",
+		"rebase-working": "vite-node ./src/rebase-working-branch.ts",
+		"apply-topics": "vite-node ./src/apply-topics.ts",
 		"format:fix": "pnpm exec -- biome format --fix"
 	},
 	"dependencies": {

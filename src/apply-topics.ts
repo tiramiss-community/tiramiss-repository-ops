@@ -1,24 +1,3 @@
-/* eslint-disable no-console */
-/**
- * make-tiramiss.ts
- *
- * CLI for constructing integration branches by vendoring a tool repo and applying
- * topic branches via one of three strategies: merge, pick (cherry-pick), or squash.
- *
- * Options (env vars provide defaults):
- *   --base-ref        (BASE_REF)               Base ref to reset working branch (default: origin/develop-upstream)
- *   --working-branch  (WORKING_BRANCH)         Working prep branch name (default: develop-working)
- *   --integrate-branch    (INTEGRATE_BRANCH)   Final integration branch name (default: tiramiss)
- *   --tool-repo       (TOOL_REPO)              External repo URL to vendor (optional)
- *   --tool-ref        (TOOL_REF)               Ref in external repo (branch|tag|commit) (default: HEAD)
- *   --tool-dir        (TOOL_DIR)               Target directory for vendored repo (default: tiramiss)
- *   --push            (PUSH)                   Whether to push branches (default: true)
- *   --mode            (MODE)                   merge | pick | squash (default: squash)
- *   --topics          (TOPICS_FILE)            Explicit topics file path (overrides auto search)
- *
- * Auto topic file search order (if --topics not given): ./<toolDir>/topics.txt, ./topics.txt
- */
-
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import yargs from "yargs";
@@ -37,19 +16,6 @@ import { run } from "./utils/proc";
 
 type Mode = "merge" | "pick" | "squash";
 
-interface CliArgs {
-	baseRef: string;
-	workingBranch: string;
-	integrateBranch: string;
-	toolRepo: string;
-	toolRef: string;
-	toolDir: string;
-	push: boolean;
-	mode: Mode;
-	topics: string | undefined; // explicit topics file path
-}
-
-// CLI parsing (env vars remain usable as defaults)
 const argv = yargs(hideBin(process.argv))
 	.usage("$0 [options]")
 	.option("baseRef", {
@@ -57,27 +23,10 @@ const argv = yargs(hideBin(process.argv))
 		default: process.env.BASE_REF ?? "origin/develop-upstream",
 		describe: "Base reference used to reset working branch",
 	})
-	.option("workingBranch", {
-		type: "string",
-		default: process.env.WORKING_BRANCH ?? "develop-working",
-		describe: "Ephemeral integration prep branch name",
-	})
 	.option("integrateBranch", {
 		type: "string",
 		default: process.env.INTEGRATE_BRANCH ?? "tiramiss",
 		describe: "Final integration branch name to produce",
-	})
-	.option("toolRepo", {
-		type: "string",
-		default:
-			process.env.TOOL_REPO ??
-			"https://github.com/tiramiss-community/tiramiss-repository-ops.git",
-		describe: "External repository URL to vendor (optional)",
-	})
-	.option("toolRef", {
-		type: "string",
-		default: process.env.TOOL_REF ?? "HEAD",
-		describe: "Ref in tool-repo to checkout (branch|tag|commit)",
 	})
 	.option("toolDir", {
 		type: "string",
@@ -100,7 +49,7 @@ const argv = yargs(hideBin(process.argv))
 		describe: "Explicit topics file path (overrides auto search)",
 	})
 	.help()
-	.parseSync() as unknown as CliArgs;
+	.parseSync();
 
 const BASE_REF = argv.baseRef;
 const INTEGRATE_BRANCH = argv.integrateBranch;
