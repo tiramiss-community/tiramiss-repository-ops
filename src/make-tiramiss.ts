@@ -21,8 +21,9 @@
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
-import { existsSync, readFileSync, rmSync } from "node:fs";
+import { cpSync, existsSync, readFileSync, rmSync } from "node:fs";
 import { join } from "node:path";
+import { glob } from "glob";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
@@ -282,11 +283,15 @@ async function vendorToolRepo() {
 		const target = TOOL_DIR;
 		if (existsSync(target)) {
 			console.log(`  • remove existing ${target}/*`);
-			rmSync(`${target}/*`, { recursive: true, force: true });
+			rmSync(join(target, "*"), { recursive: true, force: true });
 			await git(["add", "-A", target]); // 削除をステージ
 		}
 
-		fs.copyFileSync(`${working}/*`, target);
+		for (const src of glob.sync(`${working}/**/*.js`)) {
+			const dest = join(target, src);
+			cpSync(src, dest, { recursive: true });
+		}
+
 		await run("pnpm", ["install", "--frozen-lockfile"], target);
 
 		// 追加をステージ & コミット
