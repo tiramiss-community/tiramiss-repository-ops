@@ -33,17 +33,11 @@ const argv = yargs(hideBin(process.argv))
     default: false,
     describe: "Include issue comments",
   })
-  .option("prefix", {
-    alias: "p",
-    type: "string",
-    default: "ahead/pr-",
-    describe: "Prefix for PR numbers (e.g., ahead/pr-)",
-  })
   .help()
   .parseSync();
 
 async function main() {
-  const { token, repo, issue, output, comments, prefix } = argv;
+  const { token, repo, issue, output, comments } = argv;
   const [owner, name] = repo.split("/");
   if (!owner || !name) {
     throw new Error("Invalid repo format: expected owner/name");
@@ -69,8 +63,8 @@ async function main() {
     for (const c of allComments) bodyText += `\n${c.body ?? ""}`;
   }
 
-  // 箇条書き抽出
-  const topics: string[] = [];
+  // 箇条書き抽出 + PR番号収集
+  const prNumbers = new Set<number>();
   const lines = bodyText.split(/\r?\n/);
   for (const line of lines) {
     const bulletMatch = line.match(/^\s*[-*]\s+(.*)$/);
@@ -78,24 +72,40 @@ async function main() {
       continue;
     }
 
+    // 行内に含まれる全PR番号
     const raw = bulletMatch[1].trim();
-
-    // PR 番号 (#1234) → ahead/pr-1234 に変換
-    const prMatch = raw.match(/#(\d+)/);
-    if (prMatch) {
-      topics.push(`${prefix}${prMatch[1]}`);
-      continue;
-    }
-
-    // 通常のブランチ名
-    if (raw.length > 0) {
-      topics.push(raw);
+    const matches = raw.match(/#(\d+)/g);
+    if (matches) {
+      for (const m of matches) {
+        const num = Number(m.slice(1));
+        if (!Number.isNaN(num)) {
+          prNumbers.add(num);
+        }
+      }
     }
   }
 
-  // 重複排除
-  const unique = Array.from(new Set(topics.map((t) => t.trim()))).filter(
-    Boolean,
+  // PR → ブランチ名取得
+  const resolvedBranches: string[] = [];
+  for (const num of prNumbers) {
+    try {
+      const { data: pr } = await octokit.rest.pulls.get({
+        owner,
+        repo: name,
+        pull_number: num,
+      });
+      resolvedBranches.push(pr.head.ref);
+    } catch (e) {
+      console.error(
+        `⚠ Failed to fetch PR #${num}: ${e instanceof Error ? e.message : String(e)}`,
+      );
+      throw e;
+    }
+  }
+
+  // 結合 & 重複排除
+  const topics = Array.from(
+    new Set([...resolvedBranches].map((s) => s.trim()).filter(Boolean)),
   );
 
   // 出力
@@ -106,8 +116,9 @@ async function main() {
     "",
   ].join("\n");
 
-  writeFileSync(output, `${header}${unique.join("\n")}\n`, "utf8");
-  console.log(`✅ ${unique.length} entries written to ${output}`);
+  writeFileSync(output, `${header}${topics.join("\n")}\n`, "utf8");
+
+  console.log(`✅ ${topics.length} entries written to ${output}`);
 }
 
 main().catch((err) => {
