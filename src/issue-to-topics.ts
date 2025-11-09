@@ -33,11 +33,18 @@ const argv = yargs(hideBin(process.argv))
     default: false,
     describe: "Include issue comments",
   })
+  .option("labels", {
+    alias: "L",
+    type: "string",
+    describe:
+      "Comma-separated label names; PR must have at least one to be included",
+    default: "先行実装,独自機能",
+  })
   .help()
   .parseSync();
 
 async function main() {
-  const { token, repo, issue, output, comments } = argv;
+  const { token, repo, issue, output, comments, labels } = argv;
   const [owner, name] = repo.split("/");
   if (!owner || !name) {
     throw new Error("Invalid repo format: expected owner/name");
@@ -97,7 +104,13 @@ async function main() {
     }
   }
 
-  // PR → ブランチ名取得
+  // 必要ラベル一覧（OR 条件）
+  const requiredLabels = labels
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+  // PR → ブランチ名取得（必要ラベルフィルタ適用）
   const resolvedBranches: string[] = [];
   for (const num of prNumbers) {
     try {
@@ -106,6 +119,20 @@ async function main() {
         repo: name,
         pull_number: num,
       });
+
+      const prLabelNames = pr.labels.map((l: any) => l.name).filter(Boolean);
+      const hasRequired = requiredLabels.some((rl) =>
+        prLabelNames.includes(rl),
+      );
+      if (!hasRequired) {
+        console.log(
+          `⏭ Skipping PR #${num} (labels: ${prLabelNames.join(
+            ",",
+          )}) - none of required: ${requiredLabels.join(",")}`,
+        );
+        continue;
+      }
+
       resolvedBranches.push(pr.head.ref);
     } catch (e) {
       console.error(
@@ -125,6 +152,7 @@ async function main() {
     "# Auto-generated from GitHub Issue",
     `# repo: ${repo}`,
     `# issue: #${issue}`,
+    `# required labels (any): ${requiredLabels.join(", ")}`,
     "",
   ].join("\n");
 
