@@ -8,19 +8,18 @@ const argv = yargs(hideBin(process.argv))
     alias: "t",
     type: "string",
     describe: "GitHub personal access token or GITHUB_TOKEN",
-    demandOption: true,
   })
   .option("repo", {
     alias: "r",
     type: "string",
     describe: "Target repository (owner/name)",
-    demandOption: true,
+    default: "tiramiss-community/tiramiss",
   })
   .option("issue", {
     alias: "i",
     type: "number",
     describe: "Issue number to read",
-    demandOption: true,
+    default: 47,
   })
   .option("output", {
     alias: "o",
