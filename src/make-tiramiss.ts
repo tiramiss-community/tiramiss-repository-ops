@@ -282,17 +282,18 @@ async function vendorToolRepo() {
 		// 既存の target を一旦消す（ワークツリー汚染を避ける）
 		const target = TOOL_DIR;
 		if (existsSync(target)) {
-			console.log(`  • remove existing ${target}/*`);
+			console.log(`  • remove existing ${join(target, "*")}`);
 			rmSync(join(target, "*"), { recursive: true, force: true });
-			await git(["add", "-A", target]); // 削除をステージ
+			await git(["add", "-A", target]);
 		}
 
-		for (const src of glob.sync(`${working}/**/*.js`)) {
+		for (const src of glob.sync(`${working}/**/*`)) {
 			const dest = join(target, src);
 			console.log("	• copy", src, "->", dest);
 			cpSync(src, dest, { recursive: true });
 		}
 
+		console.log("	• install dependencies with pnpm");
 		await run("pnpm", ["install", "--frozen-lockfile"], target);
 
 		// 追加をステージ & コミット
