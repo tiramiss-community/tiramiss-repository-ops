@@ -8,6 +8,8 @@ export function run(
 ) {
 	return new Promise<{ code: number; out: string; err: string }>(
 		(resolve, reject) => {
+			console.log(`> ${cmd} ${args.join(" ")}`);
+
 			const p = spawn(cmd, args, { stdio: ["ignore", "pipe", "pipe"], cwd });
 			let out = "",
 				err = "";

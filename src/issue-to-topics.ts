@@ -3,15 +3,6 @@ import { Octokit } from "octokit";
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 
-interface Args {
-	token: string;
-	repo: string;
-	issue: number;
-	output: string;
-	comments: boolean;
-	prefix: string;
-}
-
 const argv = yargs(hideBin(process.argv))
 	.option("token", {
 		alias: "t",
@@ -50,7 +41,7 @@ const argv = yargs(hideBin(process.argv))
 		describe: "Prefix for PR numbers (e.g., ahead/pr-)",
 	})
 	.help()
-	.parseSync() as Args;
+	.parseSync();
 
 async function main() {
 	const { token, repo, issue, output, comments, prefix } = argv;
