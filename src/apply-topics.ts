@@ -117,7 +117,8 @@ async function applyPick(topic: string, baseRef: string) {
 }
 
 async function applySquash(topic: string) {
-  const common = await mergeBase("HEAD", topic);
+  const head = await rev("HEAD");
+  const common = await mergeBase(head, topic);
   const diff = await run(
     "git",
     ["diff", "--quiet", `${common}..${topic}`, "--"],
@@ -140,13 +141,61 @@ async function applySquash(topic: string) {
     );
   }
 
-  await git([
-    "commit",
-    "-m",
-    `squash: ${topic}`,
-    "-m",
-    `Squashed from '${topic}'`,
-  ]);
+  const commitIds = await listCommits(common, topic);
+  const commits = await Promise.all(
+    commitIds.map(async (c) => {
+      const [authorName, authorEmail, body] = (
+        await git(["show", "-s", "--format=%an%n%ae%n%B", c])
+      ).split("\n");
+      return { authorName, authorEmail, body };
+    }),
+  );
+
+  const headAuthor = {
+    name: await git(["config", "user.name"]),
+    email: await git(["config", "user.email"]),
+  };
+
+  const coAuthors = [
+    ...new Set(
+      commits
+        .map((c) => `${c.authorName} <${c.authorEmail}>`)
+        .filter(
+          (a) =>
+            a !== `${headAuthor.name} <${headAuthor.email}>` &&
+            a !== "Tiramiss <tiramiss@users.noreply.github.com>",
+        ),
+    ),
+  ].map((a) => `Co-authored-by: ${a}`);
+
+  const body = commits
+    .map((c) => c.body)
+    .join("\n\n---\n\n")
+    .trim();
+
+  const title = `squash: ${topic}`;
+  const footer = `Squashed from '${topic}'`;
+
+  let message = `${title}\n\n${body}\n\n${footer}`;
+  if (coAuthors.length > 0) {
+    message += `\n\n${coAuthors.join("\n")}`;
+  }
+
+  const GIT_MAX_COMMIT_MESSAGE_LENGTH = 65536;
+  if (Buffer.byteLength(message, "utf8") > GIT_MAX_COMMIT_MESSAGE_LENGTH) {
+    const coAuthorsText = coAuthors.join("\n");
+    const fixedParts = `${title}\n\n\n\n${footer}\n\n${coAuthorsText}`;
+    const fixedPartsLength = Buffer.byteLength(fixedParts, "utf8");
+    const availableBodyLength =
+      GIT_MAX_COMMIT_MESSAGE_LENGTH - fixedPartsLength;
+
+    const truncatedBody = Buffer.from(body, "utf8")
+      .slice(0, availableBodyLength)
+      .toString("utf8");
+    message = `${title}\n\n${truncatedBody}\n\n${footer}\n\n${coAuthorsText}`;
+  }
+
+  await git(["commit", "-m", message]);
 }
 
 (async () => {
