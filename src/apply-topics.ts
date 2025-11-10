@@ -139,11 +139,11 @@ async function applySquash(topic: string) {
       "squash コンフリクト。解決後 'git commit' して再実行してください。",
     );
   }
-  const headSubj = await git(["log", "-1", "--pretty=%s", topic], true);
+
   await git([
     "commit",
     "-m",
-    `squash(${topic.split("/").pop() ?? topic}): ${headSubj}`,
+    `squash: ${topic}`,
     "-m",
     `Squashed from '${topic}'`,
   ]);
