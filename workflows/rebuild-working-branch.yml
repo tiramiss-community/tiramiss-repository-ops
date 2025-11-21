@@ -50,12 +50,12 @@ jobs:
         working-directory: .tiramiss
         run: |
           mkdir -p ../github/workflows
-          cp -a workflows/. ../github/workflows/
+          cp -a workflows/. ../.github/workflows/
 
       - name: Commit topics and workflows
         working-directory: .tiramiss
         run: |
-          git add topics.txt ../github/workflows
+          git add topics.txt ../.github/workflows
           if git diff --cached --quiet; then
             echo "No changes to commit."
           else
