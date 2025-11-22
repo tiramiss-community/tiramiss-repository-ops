@@ -169,8 +169,8 @@ async function vendorToolRepo() {
 (async () => {
   await ensureClean();
 
-  console.log("▶ fetch --all --prune --tags");
-  await git(["fetch", "--all", "--prune", "--tags"]);
+  console.log("▶ fetch --all --prune --no-tags");
+  await git(["fetch", "--all", "--prune", "--no-tags"]);
 
   // WORKING_BRANCH を作成 / リセット
   const baseInfo = await resolveBaseCommit();
