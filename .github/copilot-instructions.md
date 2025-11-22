@@ -4,6 +4,7 @@
 - tiramiss フォーク運用（upstream 追従、作業ブランチ再構築、トピック適用）を自動化するためのスクリプト群です。
 - 実行は `pnpm run <task>` + Vite Node で行い、GitHub Actions でも `.tiramiss` 配下に vendoring した同じエントリーポイントを再利用します。
 - 主要ソースは `src/`、ワークフローのひな型は `workflows/` に置き、rebuild ジョブが `.github/workflows` へコピーします。
+- プロジェクトのメンテナは日本語話者のため、チャットの応答、コメントやエラーメッセージも日本語で記述してください。
 
 ## 主なエントリーポイント
 - `src/sync-upstream.ts`: `upstream/develop` を `develop-upstream` に取り込みます（remote 自動追加、merge、必要なら push）。
