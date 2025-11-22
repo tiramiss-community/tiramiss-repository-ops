@@ -10,7 +10,6 @@ on:
 
 permissions:
   contents: write
-  workflows: write
 
 jobs:
   rebuild:
@@ -72,8 +71,21 @@ jobs:
           mkdir -p ../github/workflows
           cp -a workflows/. ../.github/workflows/
 
+      - uses: actions/create-github-app-token@v1
+        id: app-token
+        env:
+          APP_ID: ${{ secrets.WORKFLOW_APP_ID }}
+          APP_PRIVATE_KEY: ${{ secrets.WORKFLOW_APP_KEY }}
+        with:
+          app_id: ${{ env.APP_ID }}
+          private_key: ${{ env.APP_PRIVATE_KEY }}
+          repositories: tiramiss
+
       - name: Commit topics and workflows
         working-directory: .tiramiss
+        env:
+          # 通常のGITHUB_TOKENではワークフローの更新ができないため、専用のGitHubAppトークンを使用する
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git add topics.txt ../.github/workflows
           if git diff --cached --quiet; then
