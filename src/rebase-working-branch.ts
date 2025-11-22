@@ -13,6 +13,11 @@ import {
   rev,
 } from "./utils/git";
 import { run } from "./utils/proc";
+import {
+  buildUpstreamTagRef,
+  normalizeUpstreamTagNamespace,
+  sanitizeUpstreamTagSuffix,
+} from "./utils/upstream-tags";
 
 const argv = yargs(hideBin(process.argv))
   .usage("$0 [options]")
@@ -26,6 +31,12 @@ const argv = yargs(hideBin(process.argv))
     default: process.env.BASE_UPSTREAM_TAG,
     describe:
       "develop-upstream 上のタグ名（例: 2025.10.0）。refs/tags/upstream/ は自動付与されます",
+  })
+  .option("upstreamTagNamespace", {
+    type: "string",
+    default: process.env.UPSTREAM_TAG_NAMESPACE,
+    describe:
+      "Namespace under refs/ where upstream tags are stored (例: refs/tags/upstream)",
   })
   .option("workingBranch", {
     type: "string",
@@ -58,12 +69,16 @@ const argv = yargs(hideBin(process.argv))
   .parseSync(); // as unknown as CliArgs;
 
 const BASE_REF = argv.baseRef;
+const UPSTREAM_TAG_NAMESPACE = normalizeUpstreamTagNamespace(
+  "upstream",
+  argv.upstreamTagNamespace,
+);
 const BASE_UPSTREAM_TAG_SUFFIX =
   typeof argv.baseUpstreamTag === "string" && argv.baseUpstreamTag.trim()
-    ? argv.baseUpstreamTag.trim().replace(/^\/+|\/+$/g, "")
+    ? sanitizeUpstreamTagSuffix(argv.baseUpstreamTag)
     : undefined;
 const BASE_UPSTREAM_TAG_REF = BASE_UPSTREAM_TAG_SUFFIX
-  ? `refs/tags/upstream/${BASE_UPSTREAM_TAG_SUFFIX}`
+  ? buildUpstreamTagRef(BASE_UPSTREAM_TAG_SUFFIX, UPSTREAM_TAG_NAMESPACE)
   : undefined;
 const WORKING_BRANCH = argv.workingBranch;
 const TOOL_REPO = argv.toolRepo;
@@ -80,14 +95,34 @@ async function resolveBaseCommit() {
   const tagCommit = await rev(BASE_UPSTREAM_TAG_REF);
   if (!(await gitOk(["merge-base", "--is-ancestor", tagCommit, branchHead]))) {
     throw new Error(
-      `指定したタグ ${BASE_UPSTREAM_TAG_SUFFIX} (refs/tags/upstream/${BASE_UPSTREAM_TAG_SUFFIX}) は ${BASE_REF} 上に存在しません。タグは develop-upstream の履歴上にある必要があります。`,
+      `指定したタグ ${BASE_UPSTREAM_TAG_SUFFIX} (${UPSTREAM_TAG_NAMESPACE}/${BASE_UPSTREAM_TAG_SUFFIX}) は ${BASE_REF} 上に存在しません。タグは develop-upstream の履歴上にある必要があります。`,
     );
   }
 
   return {
-    label: `${BASE_REF} (tag upstream/${BASE_UPSTREAM_TAG_SUFFIX})`,
+    label: `${BASE_REF} (tag ${BASE_UPSTREAM_TAG_REF})`,
     commit: tagCommit,
   };
+}
+
+async function fetchNamespacedUpstreamTagsFromOrigin() {
+  if (!BASE_UPSTREAM_TAG_REF) {
+    return;
+  }
+  console.log(`▶ fetch origin ${BASE_UPSTREAM_TAG_REF}`);
+  try {
+    await git([
+      "fetch",
+      "--no-tags",
+      "origin",
+      `${BASE_UPSTREAM_TAG_REF}:${BASE_UPSTREAM_TAG_REF}`,
+    ]);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    throw new Error(
+      `origin から upstream タグ (${BASE_UPSTREAM_TAG_REF}) を取得できませんでした。sync-upstream を先に実行してタグを更新してください。\n${detail}`,
+    );
+  }
 }
 
 async function vendorToolRepo() {
@@ -171,6 +206,8 @@ async function vendorToolRepo() {
 
   console.log("▶ fetch --all --prune --no-tags");
   await git(["fetch", "--all", "--prune", "--no-tags"]);
+
+  await fetchNamespacedUpstreamTagsFromOrigin();
 
   // WORKING_BRANCH を作成 / リセット
   const baseInfo = await resolveBaseCommit();

@@ -1,6 +1,7 @@
 import yargs from "yargs";
 import { hideBin } from "yargs/helpers";
 import { ensureClean, git, gitOk, rev } from "./utils/git";
+import { normalizeUpstreamTagNamespace } from "./utils/upstream-tags";
 
 /**
  * Fork 元 upstream リポジトリのブランチ(デフォルト: upstream/develop)を
@@ -51,14 +52,10 @@ const UPSTREAM_REMOTE = argv.upstreamRemote;
 const TARGET_BRANCH = argv.targetBranch;
 const SOURCE_REF = argv.sourceRef;
 const PUSH = argv.push;
-const upstreamTagNsArg =
-  typeof argv.upstreamTagNamespace === "string" &&
-  argv.upstreamTagNamespace.trim()
-    ? argv.upstreamTagNamespace.trim()
-    : `refs/tags/${UPSTREAM_REMOTE}`;
-const UPSTREAM_TAG_NAMESPACE = upstreamTagNsArg.startsWith("refs/")
-  ? upstreamTagNsArg.replace(/\/$/, "")
-  : `refs/tags/${upstreamTagNsArg}`.replace(/\/$/, "");
+const UPSTREAM_TAG_NAMESPACE = normalizeUpstreamTagNamespace(
+  UPSTREAM_REMOTE,
+  argv.upstreamTagNamespace,
+);
 
 async function ensureUpstreamRemote() {
   // 既に remote があるかを簡易チェック
@@ -83,6 +80,32 @@ async function fetchUpstream() {
     "--no-tags",
     UPSTREAM_REMOTE,
     `refs/tags/*:${UPSTREAM_TAG_NAMESPACE}/*`,
+  ]);
+}
+
+async function pushUpstreamTagsToOrigin() {
+  if (!PUSH) {
+    return;
+  }
+  const refs = await git(
+    ["for-each-ref", "--format=%(refname)", UPSTREAM_TAG_NAMESPACE],
+    true,
+  );
+  if (!refs) {
+    console.log(
+      `ℹ ${UPSTREAM_TAG_NAMESPACE}/* に同期すべきタグがないため push をスキップします`,
+    );
+    return;
+  }
+  console.log(
+    `▶ push origin ${UPSTREAM_TAG_NAMESPACE}/* (mirror upstream tags namespace)`,
+  );
+  await git([
+    "push",
+    "--prune",
+    "--force",
+    "origin",
+    `${UPSTREAM_TAG_NAMESPACE}/*:${UPSTREAM_TAG_NAMESPACE}/*`,
   ]);
 }
 
@@ -125,6 +148,7 @@ async function mergeSource() {
 
   await ensureUpstreamRemote();
   await fetchUpstream();
+  await pushUpstreamTagsToOrigin();
   await ensureTargetBranch();
   const changed = await mergeSource();
 
