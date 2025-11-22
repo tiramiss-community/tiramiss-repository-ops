@@ -32,6 +32,12 @@ const argv = yargs(hideBin(process.argv))
     default: process.env.SOURCE_REF ?? "upstream/develop",
     describe: "Ref to merge from (同期元)",
   })
+  .option("upstreamTagNamespace", {
+    type: "string",
+    default: process.env.UPSTREAM_TAG_NAMESPACE,
+    describe:
+      "Namespace under refs/ where upstream tags will be stored (例: refs/tags/upstream)",
+  })
   .option("push", {
     type: "boolean",
     default: (process.env.PUSH ?? "true").toLowerCase() === "true",
@@ -45,6 +51,14 @@ const UPSTREAM_REMOTE = argv.upstreamRemote;
 const TARGET_BRANCH = argv.targetBranch;
 const SOURCE_REF = argv.sourceRef;
 const PUSH = argv.push;
+const upstreamTagNsArg =
+  typeof argv.upstreamTagNamespace === "string" &&
+  argv.upstreamTagNamespace.trim()
+    ? argv.upstreamTagNamespace.trim()
+    : `refs/tags/${UPSTREAM_REMOTE}`;
+const UPSTREAM_TAG_NAMESPACE = upstreamTagNsArg.startsWith("refs/")
+  ? upstreamTagNsArg.replace(/\/$/, "")
+  : `refs/tags/${upstreamTagNsArg}`.replace(/\/$/, "");
 
 async function ensureUpstreamRemote() {
   // 既に remote があるかを簡易チェック
@@ -57,8 +71,18 @@ async function ensureUpstreamRemote() {
 }
 
 async function fetchUpstream() {
-  console.log(`▶ fetch --prune --tags ${UPSTREAM_REMOTE}`);
-  await git(["fetch", "--prune", "--tags", UPSTREAM_REMOTE]);
+  console.log(`▶ fetch --prune ${UPSTREAM_REMOTE}`);
+  await git(["fetch", "--prune", UPSTREAM_REMOTE]);
+
+  console.log(
+    `▶ fetch tags ${UPSTREAM_REMOTE} refs/tags/* -> ${UPSTREAM_TAG_NAMESPACE}/*`,
+  );
+  await git([
+    "fetch",
+    "--prune",
+    UPSTREAM_REMOTE,
+    `refs/tags/*:${UPSTREAM_TAG_NAMESPACE}/*`,
+  ]);
 }
 
 async function ensureTargetBranch() {
@@ -86,7 +110,9 @@ async function mergeSource() {
   console.log(`▶ merge ${SOURCE_REF}`);
   try {
     await git(["merge", SOURCE_REF]);
-  } catch (e) {
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    console.error(`✖ merge failed: ${detail}`);
     throw new Error("Merge conflict occurred. Please resolve manually.");
   }
   const after = await rev("HEAD");

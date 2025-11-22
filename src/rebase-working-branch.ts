@@ -21,11 +21,11 @@ const argv = yargs(hideBin(process.argv))
     default: process.env.BASE_REF ?? "origin/develop-upstream",
     describe: "Base reference used to reset working branch",
   })
-  .option("baseTag", {
+  .option("baseUpstreamTag", {
     type: "string",
-    default: process.env.BASE_TAG,
+    default: process.env.BASE_UPSTREAM_TAG,
     describe:
-      "Optional tag name to pin baseRef (must exist on develop-upstream)",
+      "develop-upstream 上のタグ名（例: 2025.10.0）。refs/tags/upstream/ は自動付与されます",
   })
   .option("workingBranch", {
     type: "string",
@@ -58,10 +58,13 @@ const argv = yargs(hideBin(process.argv))
   .parseSync(); // as unknown as CliArgs;
 
 const BASE_REF = argv.baseRef;
-const BASE_TAG =
-  typeof argv.baseTag === "string" && argv.baseTag.trim()
-    ? argv.baseTag.trim()
+const BASE_UPSTREAM_TAG_SUFFIX =
+  typeof argv.baseUpstreamTag === "string" && argv.baseUpstreamTag.trim()
+    ? argv.baseUpstreamTag.trim().replace(/^\/+|\/+$/g, "")
     : undefined;
+const BASE_UPSTREAM_TAG_REF = BASE_UPSTREAM_TAG_SUFFIX
+  ? `refs/tags/upstream/${BASE_UPSTREAM_TAG_SUFFIX}`
+  : undefined;
 const WORKING_BRANCH = argv.workingBranch;
 const TOOL_REPO = argv.toolRepo;
 const TOOL_REF = argv.toolRef;
@@ -70,19 +73,19 @@ const PUSH = argv.push;
 
 async function resolveBaseCommit() {
   const branchHead = await rev(BASE_REF);
-  if (!BASE_TAG) {
+  if (!BASE_UPSTREAM_TAG_REF) {
     return { label: BASE_REF, commit: branchHead };
   }
 
-  const tagCommit = await rev(BASE_TAG);
+  const tagCommit = await rev(BASE_UPSTREAM_TAG_REF);
   if (!(await gitOk(["merge-base", "--is-ancestor", tagCommit, branchHead]))) {
     throw new Error(
-      `指定したタグ ${BASE_TAG} は ${BASE_REF} 上に存在しません。タグは develop-upstream の履歴上にある必要があります。`,
+      `指定したタグ ${BASE_UPSTREAM_TAG_SUFFIX} (refs/tags/upstream/${BASE_UPSTREAM_TAG_SUFFIX}) は ${BASE_REF} 上に存在しません。タグは develop-upstream の履歴上にある必要があります。`,
     );
   }
 
   return {
-    label: `${BASE_REF} (tag ${BASE_TAG})`,
+    label: `${BASE_REF} (tag upstream/${BASE_UPSTREAM_TAG_SUFFIX})`,
     commit: tagCommit,
   };
 }

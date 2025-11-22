@@ -3,8 +3,8 @@ name: rebuild-working-branch
 on:
   workflow_dispatch:
     inputs:
-      base_tag:
-        description: "develop-upstream 上のタグ名 (任意)"
+      base_upstream_tag:
+        description: "refs/tags/upstream/<tag> の <tag> 部分 (例: 2025.10.0)"
         required: false
         type: string
 
@@ -43,7 +43,7 @@ jobs:
         working-directory: .tiramiss
         env:
           CI: true
-          BASE_TAG: ${{ inputs.base_tag }}
+          BASE_UPSTREAM_TAG: ${{ inputs.base_upstream_tag }}
         run: pnpm run rebase-working
 
       - name: Generate topics list
