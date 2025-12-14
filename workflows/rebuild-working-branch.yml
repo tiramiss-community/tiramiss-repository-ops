@@ -81,27 +81,33 @@ jobs:
         # - bundle: <bundle-branch> <topic1> <topic2> ...
         run: pnpm run issue-to-topics -- --token "$GITHUB_TOKEN" --bundlesOutput bundles.txt
 
-      - name: Build bundle branches
-        working-directory: .tiramiss
-        env:
-          CI: true
-        run: pnpm run bundle-topics -- --baseRef HEAD
-
       - name: Copy workflows to .github/workflows
         working-directory: .tiramiss
         run: |
           mkdir -p ../.github/workflows
           cp -a workflows/. ../.github/workflows/
 
-      - name: Commit topics and workflows
+      - name: Commit topics and workflows (local)
         working-directory: .tiramiss
-        env:
-          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
         run: |
           git add topics.txt bundles.txt ../.github/workflows
           if git diff --cached --quiet; then
             echo "No changes to commit."
+            echo "DID_COMMIT=0" >> "$GITHUB_ENV"
           else
             git commit -m "ci: update workflows and topics"
-            git push origin develop-working
+            echo "DID_COMMIT=1" >> "$GITHUB_ENV"
           fi
+
+      - name: Build bundle branches
+        working-directory: .tiramiss
+        env:
+          CI: true
+        run: pnpm run bundle-topics -- --baseRef HEAD
+
+      - name: Push develop-working
+        if: env.DID_COMMIT == '1'
+        working-directory: .tiramiss
+        env:
+          GITHUB_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: git push origin develop-working

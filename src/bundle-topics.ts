@@ -58,6 +58,11 @@ function initBundlesFileIfMissing() {
     return { path: existing, created: false };
   }
 
+  const isCi = (process.env.CI ?? "").toLowerCase() === "true";
+  if (isCi) {
+    return { path: null, created: false };
+  }
+
   const target = BUNDLES_CANDIDATES[0];
   mkdirSync(dirname(target), { recursive: true });
   writeFileSync(target, bundlesTemplate(), "utf8");
@@ -180,6 +185,12 @@ async function rebuildBundle(bundle: Bundle, baseCommit: string) {
       "ℹ bundles.txt を編集してから、再度 bundle-topics を実行してください。",
     );
     return;
+  }
+
+  if (!init.path) {
+    throw new Error(
+      "bundles.txt が見つかりません。CI では bundles.txt を事前に生成（例: issue-to-topics --bundlesOutput）してから実行してください。",
+    );
   }
 
   const { path: bundlesPath, bundles } = readBundles();
