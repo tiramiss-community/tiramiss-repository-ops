@@ -51,9 +51,10 @@ type TopicItem =
   | { kind: "pr"; number: number };
 
 function isValidRefToken(s: string) {
-  return (
-    /^[A-Za-z0-9._/-]+$/.test(s) && !s.includes("http") && !s.includes("#")
-  );
+  // ブランチ名トークンとして妥当な文字だけ許可する。
+  // 注意: ブランチ名に "http" が含まれるケース（例: support-multiple-http-worker）があるため、
+  // "http" という部分文字列で URL 判定して弾かない。
+  return /^[A-Za-z0-9._/-]+$/.test(s);
 }
 
 function rawLineForError(raw: string) {
