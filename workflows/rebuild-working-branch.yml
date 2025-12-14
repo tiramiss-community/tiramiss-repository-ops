@@ -99,12 +99,6 @@ jobs:
             echo "DID_COMMIT=1" >> "$GITHUB_ENV"
           fi
 
-      - name: Build bundle branches
-        working-directory: .tiramiss
-        env:
-          CI: true
-        run: pnpm run bundle-topics -- --baseRef HEAD
-
       - name: Push develop-working
         if: env.DID_COMMIT == '1'
         working-directory: .tiramiss

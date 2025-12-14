@@ -1,13 +1,19 @@
-name: apply-topics
+name: build-bundles
 
 on:
   workflow_dispatch:
+    inputs:
+      base_ref:
+        description: "bundle ブランチを作り直す基準 ref（通常は HEAD / develop-working）"
+        required: false
+        type: string
+        default: "HEAD"
 
 permissions:
   contents: write
 
 jobs:
-  rebuild:
+  build:
     runs-on: ubuntu-latest
     steps:
       - name: Ensure admin actor
@@ -60,8 +66,9 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Rebuild tiramiss branch
+      - name: Build bundle branches
         working-directory: .tiramiss
         env:
           CI: true
-        run: pnpm run apply-topics
+        # bundles.txt は develop-working（.tiramiss/bundles.txt）にコミット済みである前提です。
+        run: pnpm run bundle-topics -- --baseRef "${{ inputs.base_ref }}"

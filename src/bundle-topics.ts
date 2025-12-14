@@ -41,6 +41,65 @@ const BUNDLES_CANDIDATES = argv.bundles
 
 type Bundle = { name: string; topics: string[] };
 
+function shouldKeepOursOnMergeConflict(path: string) {
+  // bundle ブランチは「機能差分」を載せるのが目的。
+  // .tiramiss や workflow は生成/運用用のため、bundle の merge で衝突した場合は ours を優先してノイズを減らす。
+  return (
+    path === ".tiramiss" ||
+    path.startsWith(".tiramiss/") ||
+    path === ".github/workflows" ||
+    path.startsWith(".github/workflows/")
+  );
+}
+
+async function isMergeInProgress() {
+  // merge 中のみ存在する擬似 ref を見る（作業ディレクトリに依存しない）
+  return gitOk(["rev-parse", "-q", "--verify", "MERGE_HEAD"]);
+}
+
+async function listUnmergedFiles() {
+  const out = await git(["diff", "--name-only", "--diff-filter=U"], true);
+  return out
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+async function tryAutoResolveMergeConflictKeepingOurs() {
+  if (!(await isMergeInProgress())) {
+    return { resolved: false, remaining: [] as string[] };
+  }
+
+  const unmerged = await listUnmergedFiles();
+  if (unmerged.length === 0) {
+    return { resolved: false, remaining: [] as string[] };
+  }
+
+  const keepOurs = unmerged.filter(shouldKeepOursOnMergeConflict);
+  if (keepOurs.length === 0) {
+    return { resolved: false, remaining: unmerged };
+  }
+
+  console.log(
+    `    - 衝突を自動解決: 生成物/運用ファイルは ours を採用 (${keepOurs.length} 件)`,
+  );
+
+  // 代表ディレクトリを指定してまとめて ours を採用
+  await git(
+    ["checkout", "--ours", "--", ".tiramiss", ".github/workflows"],
+    true,
+  );
+  await git(["add", "-A", ".tiramiss", ".github/workflows"], true);
+
+  const remaining = await listUnmergedFiles();
+  if (remaining.length > 0) {
+    return { resolved: false, remaining };
+  }
+
+  await git(["merge", "--continue"]);
+  return { resolved: true, remaining: [] as string[] };
+}
+
 function bundlesTemplate() {
   return [
     "# bundles.txt",
@@ -150,11 +209,24 @@ async function rebuildBundle(bundle: Bundle, baseCommit: string) {
       continue;
     }
 
-    await git(["merge", "--no-ff", "--no-edit", topic]).catch(() => {
+    try {
+      await git(["merge", "--no-ff", "--no-edit", topic]);
+    } catch {
+      const auto = await tryAutoResolveMergeConflictKeepingOurs();
+      if (auto.resolved) {
+        console.log("    - merge コンフリクトを自動解決（ours 優先）");
+        continue;
+      }
+
+      const remaining = auto.remaining.length
+        ? `\n未解決の衝突: ${auto.remaining.join(", ")}`
+        : "";
+
       throw new Error(
-        `merge コンフリクト: ${bundle.name} <- ${topic}. 解決後に 'git add -A && git merge --continue' を実行し、再実行してください。`,
+        `merge コンフリクト: ${bundle.name} <- ${topic}. 解決後に 'git add -A && git merge --continue' を実行し、再実行してください。` +
+          remaining,
       );
-    });
+    }
   }
 
   if (!PUSH) {
