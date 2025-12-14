@@ -8,7 +8,7 @@ const argv = yargs(hideBin(process.argv))
   .usage("$0 [options]")
   .option("baseRef", {
     type: "string",
-    default: process.env.BASE_REF ?? "HEAD",
+    default: process.env.BASE_REF ?? "develop-working",
     describe:
       "Bundles are rebuilt from this base ref (recommended: HEAD when running on develop-working)",
   })
@@ -85,8 +85,11 @@ async function tryAutoResolveMergeConflictKeepingOurs() {
   );
 
   // 競合中ファイルのみを対象に ours を採用する（ディレクトリ指定は環境によって失敗しうるため）
-  await git(["checkout", "--ours", "--", ...keepOurs], true);
-  await git(["add", "--", ...keepOurs], true);
+  // さらに、git 実行ディレクトリがリポジトリ直下でない場合（例: .tiramiss）でも確実に解決できるよう
+  // pathspec を `:(top)` でルート基準に固定する。
+  const rooted = keepOurs.map((p) => `:(top)${p.replace(/^\.\//, "")}`);
+  await git(["checkout", "--ours", "--", ...rooted], true);
+  await git(["add", "--", ...rooted], true);
 
   const remaining = await listUnmergedFiles();
   if (remaining.length > 0) {

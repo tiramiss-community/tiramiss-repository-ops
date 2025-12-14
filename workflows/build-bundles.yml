@@ -4,10 +4,10 @@ on:
   workflow_dispatch:
     inputs:
       base_ref:
-        description: "bundle ブランチを作り直す基準 ref（通常は HEAD / develop-working）"
+        description: "bundle ブランチを作り直す基準 ref（通常は develop-working）"
         required: false
         type: string
-        default: "HEAD"
+        default: "develop-working"
 
 permissions:
   contents: write
