@@ -84,12 +84,9 @@ async function tryAutoResolveMergeConflictKeepingOurs() {
     `    - 衝突を自動解決: 生成物/運用ファイルは ours を採用 (${keepOurs.length} 件)`,
   );
 
-  // 代表ディレクトリを指定してまとめて ours を採用
-  await git(
-    ["checkout", "--ours", "--", ".tiramiss", ".github/workflows"],
-    true,
-  );
-  await git(["add", "-A", ".tiramiss", ".github/workflows"], true);
+  // 競合中ファイルのみを対象に ours を採用する（ディレクトリ指定は環境によって失敗しうるため）
+  await git(["checkout", "--ours", "--", ...keepOurs], true);
+  await git(["add", "--", ...keepOurs], true);
 
   const remaining = await listUnmergedFiles();
   if (remaining.length > 0) {
