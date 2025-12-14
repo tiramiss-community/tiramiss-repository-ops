@@ -60,6 +60,14 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
+      - name: Build bundle branches
+        working-directory: .tiramiss
+        env:
+          CI: true
+        # bundles.txt / topics.txt は事前に issue-to-topics で生成済みである前提です。
+        # Issue の箇条書きは topic:/bundle: 記法のみを解釈します。
+        run: pnpm run bundle-topics -- --baseRef HEAD
+
       - name: Rebuild tiramiss branch
         working-directory: .tiramiss
         env:
