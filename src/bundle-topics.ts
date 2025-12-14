@@ -96,7 +96,9 @@ async function tryAutoResolveMergeConflictKeepingOurs() {
     return { resolved: false, remaining };
   }
 
-  await git(["merge", "--continue"]);
+  // CI では EDITOR が未設定で `git merge --continue` がエディタ起動に失敗することがある。
+  // MERGE_MSG をそのまま使って非対話で確定させる。
+  await git(["commit", "--no-edit"]);
   return { resolved: true, remaining: [] as string[] };
 }
 
