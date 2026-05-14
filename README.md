@@ -113,7 +113,7 @@ Upstream の参照（デフォルト: `upstream/develop`）を、同期用ブラ
   - `refs/tags/upstream/<tag>` を origin から fetch（先に `sync-upstream` が必要）
   - タグが `BASE_REF` の履歴上にあることを検証
 - `develop-working` を作成/更新して `reset --hard <base>`
-- `TOOL_REPO` を一時ディレクトリに clone → `.git` を除去 → `TOOL_DIR` にコピー
+- `TOOL_REPO` を一時ディレクトリに clone → `.git` を除去 → `TOOL_DIR` にコピー（既存ファイルは上書き）
 - `pnpm install --frozen-lockfile` を `TOOL_DIR` で実行
 - 変更があれば `ops: vendor ...` としてコミット
 - `PUSH=true` かつ変更があれば origin に push（既存なら force push）
@@ -131,7 +131,7 @@ Upstream の参照（デフォルト: `upstream/develop`）を、同期用ブラ
 
 注意（重要）:
 
-- `TOOL_DIR` 配下は一度削除してからコピーします（`rm -rf <TOOL_DIR>/*` 相当）。
+- `TOOL_DIR` 配下に外部リポジトリをコピーします（既存ファイルは上書き）。`TOOL_DIR` の指定ミスで意図しないディレクトリへの書き込みが起きるため、実行前に必ず確認してください。
 - `reset --hard` を行います。作業ブランチは「再構築されるもの」として扱ってください。
 
 ---
@@ -142,8 +142,8 @@ GitHub Issue の本文を読み、箇条書きから `topics.txt`（および任
 
 このスクリプトが解釈する箇条書きは **次の 2 形式のみ**です。
 
-- `topic:`: ブランチ名、または PR 番号から 1 トピックを追加
-- `bundle:`: bundle ブランチを 1 トピックとして追加し、任意で `bundles.txt` に bundle 定義を出力
+- `topic:`: ブランチ名、PR 番号、または PR URL から 1 トピックを追加
+- `bundle:`: bundle ブランチを 1 トピックとして追加し、topics を指定した場合は `bundles.txt` に bundle 定義も出力
 
 #### 束ね定義を Issue に書く（bundles.txt 生成）
 
@@ -154,13 +154,14 @@ GitHub Issue の本文を読み、箇条書きから `topics.txt`（および任
 - `topic:`
   - `- topic: bundle/feature-x` → `topics.txt` に `bundle/feature-x` を追加
   - `- topic: 123` / `- topic: #123` → PR #123 の head ブランチ名を解決して `topics.txt` に追加（ラベル条件つき）
+  - `- topic: https://github.com/owner/repo/pull/123` → PR URL からブランチ名を解決して追加
 - `bundle:`
-  - `- bundle: bundle/feature-x` → `topics.txt` に `bundle/feature-x` を追加
+  - `- bundle: bundle/feature-x` → `topics.txt` に `bundle/feature-x` を追加（`bundles.txt` には出力しない）
   - `- bundle: bundle/feature-x topic-A topic-B` → `topics.txt` に `bundle/feature-x` を追加し、`bundles.txt` に `bundle/feature-x topic-A topic-B` を出力
 
 注意:
 
-- `topic:` は 1 トークンのみ指定してください（ブランチ名 or PR 番号）
+- `topic:` は 1 トークンのみ指定してください（ブランチ名、PR 番号、または PR URL）
 - `bundle: <bundle> <topics...>` は `bundle/*` 形式を推奨します
 - topics 側に重複や自己参照（`bundle/...` が自分自身を含む）がある場合はエラーにします
 
@@ -191,7 +192,7 @@ pnpm run issue-to-topics -- \
 
 - `topics.txt` を探索（デフォルト: `<TOOL_DIR>/topics.txt` → `topics.txt`）
 - `tiramiss` を作成/更新し、現在の `HEAD` から開始
-- 各トピックを `mode` に従って適用
+- 各トピックを `mode` に従って適用（既にマージ/適用済みのトピックはスキップ）
 - `PUSH=true` の場合、origin に push（既存なら force push）
 
 モード:
@@ -279,11 +280,19 @@ pnpm run bundle-topics -- --baseRef HEAD
 
 動作:
 
-- `BASE_REF`（デフォルト: `HEAD`）から束ねブランチを作り直し（`switch -C`）、指定順で `merge --no-ff --no-edit`
+- `BASE_REF`（デフォルト: `develop-working`）から束ねブランチを作り直し（`switch -C`）、指定順で `merge --no-ff --no-edit`
+- `.tiramiss/` および `.github/workflows/` のコンフリクトは自動で `ours` を採用（生成物/運用ファイルのノイズを抑えるため）
 - `PUSH=true`（デフォルト）なら origin に push（既存なら force push）
 - 成功時は、実行開始時のブランチへ戻ります（CI で後続ステップが `develop-working` を前提にできるようにするため）
 
 そして `topics.txt` 側には、**束ねブランチ名（例: `bundle/feature-x`）だけ**を書きます。
+
+オプション（環境変数でも指定可）:
+
+- `--baseRef` / `BASE_REF`（default: `develop-working`）
+- `--toolDir` / `TOOL_DIR`（default: `./`）
+- `--bundles` / `BUNDLES_FILE`（bundles ファイルの明示パス。未指定時は `<TOOL_DIR>/bundles.txt` → `bundles.txt` の順で探索）
+- `--push` / `PUSH`（default: `true`）
 
 ### 開発ブランチ（topic）は develop-working を基準にする
 
@@ -334,7 +343,7 @@ pnpm run bundle-topics -- --baseRef HEAD
 
 1. upstream 追従: `pnpm run sync-upstream`
 2. 作業ブランチ再構築: `pnpm run rebase-working`（必要なら `BASE_UPSTREAM_TAG` を指定）
-3. Issue から topics 生成: `pnpm run issue-to-topics -- --token <token> --issue <n> --bundlesOutput bundles.txt`
+3. Issue から topics/bundles 生成: `pnpm run issue-to-topics -- --token <token> --issue <n> --bundlesOutput bundles.txt`
 4. 束ねブランチ更新（必要な場合）: `pnpm run bundle-topics -- --baseRef HEAD`
 5. topics 適用: `pnpm run apply-topics`（必要なら `--mode` を変更）
 
@@ -346,14 +355,17 @@ pnpm run bundle-topics -- --baseRef HEAD
 `rebuild-working-branch` ワークフロー内で `workflows/` の内容を `.github/workflows/` にコピーして更新する運用を想定しています。
 
 - `workflows/sync-upstream.yml`
-  - 毎日 JST 03:00（UTC 18:00）に実行
+  - 毎日 JST 03:00（UTC 18:00）に実行（手動実行も可）
   - `develop-working` を checkout し、`.tiramiss` 配下で `pnpm run sync-upstream`
 - `workflows/rebuild-working-branch.yml`
   - 手動実行（任意で `base_upstream_tag` を指定）
-  - `pnpm run rebase-working` → `pnpm run issue-to-topics` → `pnpm run bundle-topics` → workflows/topics をコミットして `develop-working` へ push
+  - `pnpm run rebase-working` → `pnpm run issue-to-topics --bundlesOutput bundles.txt` → workflows をコピー → topics/bundles/workflows をコミットして `develop-working` へ push
+- `workflows/build-bundles.yml`
+  - 手動実行（`base_ref` を指定。デフォルト: `develop-working`）
+  - `.tiramiss` 配下で `pnpm run bundle-topics` を実行し、bundle ブランチを作り直して push
 - `workflows/apply-topics.yml`
   - 手動実行
-  - `.tiramiss` 配下で `pnpm run bundle-topics` → `pnpm run apply-topics`
+  - `.tiramiss` 配下で `pnpm run apply-topics` を実行し、`tiramiss` ブランチを生成して push
 
 権限/シークレット:
 
@@ -367,5 +379,5 @@ pnpm run bundle-topics -- --baseRef HEAD
 
 - すべてのスクリプトは「クリーンな作業ツリー」を要求します。
 - `rebase-working` / `apply-topics` は `reset --hard` や force push を行うため、運用ブランチ以外では実行しないでください。
-- `rebase-working` は `TOOL_DIR` 配下を削除します（`rm -rf <TOOL_DIR>/*` 相当）。`TOOL_DIR` の指定ミスが最大事故要因なので、実行前に必ず確認してください。
-- 特に `.tiramiss` を `working-directory` にして実行している場合、`TOOL_DIR=./` は **`.tiramiss` 配下の全消し**になり得ます。外部リポジトリを vendoring する場合は、`TOOL_DIR=vendor/<name>` のように専用サブディレクトリを指定する運用を推奨します。
+- `rebase-working` は `TOOL_DIR` 配下に外部リポジトリをコピーします（既存ファイルは上書き）。`TOOL_DIR` の指定ミスが最大事故要因なので、実行前に必ず確認してください。
+- 特に `.tiramiss` を `working-directory` にして実行している場合、`TOOL_DIR=./` は **`.tiramiss` 配下への書き込み**になります。外部リポジトリを vendoring する場合は、`TOOL_DIR=vendor/<name>` のように専用サブディレクトリを指定する運用を推奨します。
