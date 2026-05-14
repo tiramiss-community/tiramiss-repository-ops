@@ -1,42 +1,25 @@
-# tiramiss-build-scripts 向け Copilot ガイド
+# Copilot Instructions
+
+**本ファイルは要約版です。** プロジェクトの完全な指針は [AGENTS.md](../AGENTS.md) を SSoT として参照してください。詳細ルールは [.claude/rules/](../.claude/rules/)、参照資料は [.claude/docs/](../.claude/docs/) にあります。
 
 ## プロジェクト概要
-- tiramiss フォーク運用（upstream 追従、作業ブランチ再構築、トピック適用）を自動化するためのスクリプト群です。
-- 実行は `pnpm run <task>` + Vite Node で行い、GitHub Actions でも `.tiramiss` 配下に vendoring した同じエントリーポイントを再利用します。
-- 主要ソースは `src/`、ワークフローのひな型は `workflows/` に置き、rebuild ジョブが `.github/workflows` へコピーします。
-- プロジェクトのメンテナは日本語話者のため、チャットの応答、コメントやエラーメッセージも日本語で記述してください。
 
-## 主なエントリーポイント
-- `src/sync-upstream.ts`: `upstream/develop` を `develop-upstream` に取り込みます（remote 自動追加、merge、必要なら push）。
-- `src/rebase-working-branch.ts`: `develop-working` をベース ref から再生成し、外部 repository-ops を `TOOL_DIR` に vendoring、依存インストール、必要に応じて force push します。
-- `src/issue-to-topics.ts`: GitHub Issue のチェックリストを解析し、指定ラベルを持つ PR の head ブランチを抽出して `topics.txt` に書き出します。
-- `src/apply-topics.ts`: `topics.txt` のブランチを integration ブランチへ `merge` / `pick` / `squash` モードで適用し、Co-authored-by などのメタ情報も維持します。
-- 共通ユーティリティは `src/utils/`（プロセス実行は `proc.ts`, git ラッパーは `git.ts`）。`child_process` 直叩きではなく既存ラッパーを優先してください。
+Misskey フォーク `tiramiss` の運用自動化スクリプト群です。Node.js 24 + pnpm + TypeScript + vite-node + Biome + yargs + Octokit で構成され、ローカル実行と GitHub Actions（`.tiramiss/` への vendoring 経由）の双方で同じエントリポイントを利用します。
 
-## 実行環境とツール
-- Node.js 24 + pnpm + TypeScript (NodeNext, ES2022, `noEmit`) を前提とします。
-- フォーマット/リンタは Biome（`pnpm run format:fix`）。ダブルクオートと 2 スペースインデントが標準です。
-- CLI オプションは `yargs` の `.option` で宣言し、既存スクリプト同様に環境変数で上書きできるようにします。
-- git などのコマンドは `await git([...])` / `await run(cmd, args, cwd, quiet)` を使ってログ一貫性とエラー処理を保ちます。
+## 最低限の厳守事項
 
-## コーディングスタイルとエラーハンドリング
-- 非同期は async/await で統一し、生 Promise チェーンは避けます。
-- 失敗時は状況が分かる `Error` を投げ、必要に応じて日本語の補足も含めます。
-- 破壊的な git 操作（ブランチ書き換え等）は事前に `ensureClean()` を呼びます。
-- ログはシンプルな `console.log` プレフィックスを踏襲し、CI ログでも追いやすく保ちます。
+1. 応答・コード内コメント・エラーメッセージは日本語で記述してください（保守者が日本語話者のため）。
+2. 破壊的 git 操作（`reset --hard` / force push / `TOOL_DIR` 配下の上書き）の前には、対象ブランチとパスを提示してユーザーに確認を取ります。
+3. git と外部プロセスの呼び出しは必ず `src/utils/git.ts` および `src/utils/proc.ts` のラッパーを通します。
+4. コードスタイルは Biome（ダブルクオート / 2 スペース）に従い、CLI 引数は `yargs` の `.option` で宣言して環境変数で上書き可能にします。
 
-## ツール群の拡張指針
-- 新しいスクリプトは `src/` に配置し `pnpm run <name>` から呼べるよう script を追加します。
-- ワークフローを増やす場合は `workflows/` にテンプレを置き、rebuild で `.github/workflows` へコピーされる前提を維持します。
-- `mergeBase`, `listCommits`, `gitOk` など既存ヘルパーを組み合わせ、低レベルな git コマンド構築を繰り返さないようにします。
-- 秘密情報はリポジトリに含めず、CLI 引数や環境変数で受け取る設計にしてください。
+## さらに深い指針
 
-## 検証チェックリスト
-- 作業前に `pnpm install --frozen-lockfile` を実行し依存を固定します。
-- 各スクリプトはリポジトリルート・クリーン状態で `pnpm run <task>` を叩いてスモークテストします。
-- `pnpm run format:fix` で Biome のフォーマット/リンタを通し、CI のスタイルチェックを満たします。
+各項目の根拠と具体例、`src/utils/` の API、ワークフロー運用などの詳細は次を参照してください。
 
-## 非目標と注意事項
-- 他リポジトリ操作や過剰な自動化は持ち込みません。対象は現在のクローンと vendoring 済みツールに限定します。
-- Nest.js / Express などフレームワーク層を追加しないでください。軽量 CLI に留めます。
-- force push が関わる箇所ではローカル/リモートの存在を確認し、既存パターンに倣って安全策を入れます。
+- 全体指針: [AGENTS.md](../AGENTS.md)
+- 厳守事項: [.claude/rules/](../.claude/rules/)
+- 運用フロー詳細: [.claude/docs/operational-flow.md](../.claude/docs/operational-flow.md)
+- Git 安全運用: [.claude/docs/git-safety.md](../.claude/docs/git-safety.md)
+- コード規約と既存 API: [.claude/docs/code-conventions.md](../.claude/docs/code-conventions.md)
+- GitHub Actions 運用: [.claude/docs/github-actions.md](../.claude/docs/github-actions.md)
